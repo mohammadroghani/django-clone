@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 # Django Clone - https://github.com/mohammadroghani/django-clone
 # Copyright © 2016 Mohammad Roghani <mohammad.roghani43@gmail.com>
 # Copyright © 2016 Amir Keivan Mohtashami <akmohtashami97@gmail.com>

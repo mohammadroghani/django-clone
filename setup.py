@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 # Django Clone - https://github.com/mohammadroghani/django-clone
 # Copyright © 2016 Mohammad Roghani <mohammad.roghani43@gmail.com>
 # Copyright © 2016 Amir Keivan Mohtashami <akmohtashami97@gmail.com>
@@ -23,7 +25,7 @@
 from setuptools import setup
 
 setup(name='django-clone',
-		version='0.1',
+		version='0.1.1',
 		description='Deep Copy for Django models',
 		url='http://github.com/storborg/funniest',
 		author='Mohammad Roghani, Amir Keivan Mohtashami',

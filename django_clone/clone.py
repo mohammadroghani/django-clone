@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 # Django Clone - https://github.com/mohammadroghani/django-clone
 # Copyright © 2016 Mohammad Roghani <mohammad.roghani43@gmail.com>
 # Copyright © 2016 Amir Keivan Mohtashami <akmohtashami97@gmail.com>
@@ -27,19 +29,30 @@ from django.apps import apps
 
 class Cloner(object):
 
-    def __init__(self, ignored_models=None, ignored_fields=None, already_cloned_instances=None):
-        if not ignored_models:
-            self.ignored_models = []
-        else:
+    def __init__(self,
+                 ignored_models=None,
+                 ignored_instances=None,
+                 blocking_models=None,
+                 ignored_fields=None,
+                 blocking_instances=None):
+
+        self.ignored_models = []
+        self.blocking_models = []
+        self.ignored_fields = []
+        self.ignored_instances = {}
+        self.blocking_instances = []
+
+        if ignored_models:
             self.ignored_models = [apps.get_model(s) for s in ignored_models]
-        if not ignored_fields:
-            self.ignored_fields = []
-        else:
+        if blocking_models:
+            self.blocking_models = [apps.get_model(s) for s in blocking_models]
+        if ignored_fields:
             self.ignored_fields = [(apps.get_model(a), b) for a, b in ignored_fields]
-        if already_cloned_instances:
-            self.already_cloned_instances = {a: b for a, b in already_cloned_instances}
-        else:
-            self.already_cloned_instances = {}
+        if ignored_instances:
+            self.ignored_instances = ignored_instances
+        if blocking_instances:
+            self.blocking_instances = blocking_instances
+
 
     def get_all_neighbor_objects(self, obj):
         """
@@ -63,16 +76,14 @@ class Cloner(object):
                     # We deliberately check the exact type
                     # to provide more control when using inheritance.
 
-                    ignored = False
+                    blocked = False
 
-                    for model, ignored_field_name in self.ignored_fields:
-                        if type(obj) == model and field_name == ignored_field_name:
-                            ignored = True
+                    for model, blocked_field_name in self.ignored_fields:
+                        if type(obj) == model and field_name == blocked_field_name:
+                            blocked = True
                             break
-
-                    if ignored:
+                    if blocked:
                         continue
-
                     for fld in getattr(obj, field_name).all():
                         return_list.append(fld)
         return return_list
@@ -90,14 +101,16 @@ class Cloner(object):
             return_list = [obj]
             neighbors = self.get_all_neighbor_objects(obj)
             for fld in neighbors:
-                ignored = False
-                for model in self.ignored_models:
+                blocked = False
+                for model in self.blocking_models:
                     if type(fld) == model:
-                        ignored = True
+                        blocked = True
                         break
-                if fld in self.already_cloned_instances:
-                    ignored = True
-                if not ignored and isinstance(fld, models.Model) and (fld.__class__, fld.pk) not in mark:
+                if fld in self.blocking_instances:
+                    blocked = True
+                if blocked:
+                    return_list.extend(fld)
+                elif isinstance(fld, models.Model) and (fld.__class__, fld.pk) not in mark:
                     return_list.extend(_get_all_related_object_recursively(fld, mark))
             return return_list
         mark = set([])
@@ -108,35 +121,51 @@ class Cloner(object):
         make copy of every objects that are related to one object
         """
 
-        old_to_new_objects_map = {a: b for a, b in self.already_cloned_instances}
-        new_to_old_objects_map = {b: a for a, b in old_to_new_objects_map}
+        old_to_new_objects_map = self.ignored_instances.copy()
+        new_to_old_objects_map = {b: a for a, b in old_to_new_objects_map.items()}
 
         old_objects = self.get_all_related_object(obj)
         new_objects = []
         for old_object in old_objects:
-            new_object = copy(old_object)
-            new_object.id = None
-            new_object.save()
-            new_objects.append(new_object)
-            old_to_new_objects_map.update({(old_object, new_object)})
-            new_to_old_objects_map.update({(new_object, old_object)})
-        for new_object in new_objects:
-            if new_object is not None:
-                for field in new_object._meta.get_fields():
-                    if field.is_relation and (field.many_to_one or field.one_to_one):
-                        field_value = getattr(new_object, field.name, None)
-                        mapped_value = old_to_new_objects_map.get(field_value, field_value)
-                        setattr(new_object, field.name, mapped_value)
+
+            ignored = False
+            match = None
+
+            for model in self.ignored_models:
+                if type(old_object) == model:
+                    ignored = True
+                    match = old_object
+                    break
+            if old_object in self.ignored_instances:
+                ignored = True
+                match = self.ignored_instances[old_object]
+
+            if not ignored:
+                new_object = copy(old_object)
+                new_object.id = None
                 new_object.save()
+                match = new_object
+
+            old_to_new_objects_map.update({(old_object, match)})
+            if match:
+                new_objects.append(match)
+                new_to_old_objects_map.update({(match, old_object)})
 
         for new_object in new_objects:
-            if new_object is not None:
-                for field in new_object._meta.get_fields():
-                    if field.is_relation and field.many_to_many and field.auto_created is False:
-                        for fld in getattr(new_to_old_objects_map[new_object], field.name).all():
-                            mapped_fld = old_to_new_objects_map.get(fld, fld)
-                            current_field = getattr(new_object, field.name)
-                            if mapped_fld not in current_field.all():
-                                current_field.add(mapped_fld)
-                new_object.save()
+            for field in new_object._meta.get_fields():
+                if field.is_relation and (field.many_to_one or field.one_to_one):
+                    field_value = getattr(new_object, field.name, None)
+                    mapped_value = old_to_new_objects_map.get(field_value, field_value)
+                    setattr(new_object, field.name, mapped_value)
+            new_object.save()
+
+        for new_object in new_objects:
+            for field in new_object._meta.get_fields():
+                if field.is_relation and field.many_to_many and field.auto_created is False:
+                    for fld in getattr(new_to_old_objects_map[new_object], field.name).all():
+                        mapped_fld = old_to_new_objects_map.get(fld, fld)
+                        current_field = getattr(new_object, field.name)
+                        if mapped_fld not in current_field.all():
+                            current_field.add(mapped_fld)
+            new_object.save()
         return old_to_new_objects_map[obj], old_to_new_objects_map 
