@@ -29,12 +29,7 @@ from django.apps import apps
 
 class Cloner(object):
 
-    def __init__(self,
-                 ignored_models=None,
-                 ignored_instances=None,
-                 blocking_models=None,
-                 ignored_fields=None,
-                 blocking_instances=None):
+    def __init__(self, *args, **kwargs):
 
         self.ignored_models = []
         self.blocking_models = []
@@ -42,16 +37,26 @@ class Cloner(object):
         self.ignored_instances = {}
         self.blocking_instances = []
 
+        self.apply_limits(*args, **kwargs)
+
+    def apply_limits(self,
+                     ignored_models=None,
+                     ignored_instances=None,
+                     blocking_models=None,
+                     ignored_fields=None,
+                     blocking_instances=None):
+
         if ignored_models:
-            self.ignored_models = [apps.get_model(s) for s in ignored_models]
+            self.ignored_models.extend([apps.get_model(s) for s in ignored_models])
         if blocking_models:
-            self.blocking_models = [apps.get_model(s) for s in blocking_models]
+            self.blocking_models.extend([apps.get_model(s) for s in blocking_models])
         if ignored_fields:
-            self.ignored_fields = [(apps.get_model(a), b) for a, b in ignored_fields]
+            self.ignored_fields.extend([(apps.get_model(a), b) for a, b in ignored_fields])
         if ignored_instances:
-            self.ignored_instances = ignored_instances
+            self.ignored_instances.update(ignored_instances)
         if blocking_instances:
-            self.blocking_instances = blocking_instances
+            self.blocking_instances.extend(blocking_instances)
+
 
 
     def get_all_neighbor_objects(self, obj):
