@@ -57,6 +57,7 @@ class Cloner(object):
         if blocking_instances:
             self.blocking_instances.extend(blocking_instances)
 
+        return self
 
 
     def get_all_neighbor_objects(self, obj):
