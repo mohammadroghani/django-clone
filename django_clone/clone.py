@@ -62,8 +62,7 @@ class Cloner(object):
         for field in obj._meta.get_fields():
             if field.is_relation:
                 if field.many_to_one or field.one_to_one:
-                    fld = getattr(obj, field.name)
-                    return_list.append(fld)
+                    field_name = field.name
                 else:
                     field_name = field.name
                     if field.auto_created:
@@ -72,18 +71,23 @@ class Cloner(object):
                         else:
                             field_name += "_set"
 
-                    # Check whether this field should be ignored.
-                    # We deliberately check the exact type
-                    # to provide more control when using inheritance.
+                # Check whether this field should be ignored.
+                # We deliberately check the exact type
+                # to provide more control when using inheritance.
 
-                    blocked = False
+                blocked = False
 
-                    for model, blocked_field_name in self.ignored_fields:
-                        if type(obj) == model and field_name == blocked_field_name:
-                            blocked = True
-                            break
-                    if blocked:
-                        continue
+                for model, blocked_field_name in self.ignored_fields:
+                    if type(obj) == model and field_name == blocked_field_name:
+                        blocked = True
+                        break
+                if blocked:
+                    continue
+
+                if field.many_to_one or field.one_to_one:
+                    fld = getattr(obj, field_name)
+                    return_list.append(fld)
+                else:
                     for fld in getattr(obj, field_name).all():
                         return_list.append(fld)
         return return_list
@@ -109,7 +113,7 @@ class Cloner(object):
                 if fld in self.blocking_instances:
                     blocked = True
                 if blocked:
-                    return_list.extend(fld)
+                    return_list.append(fld)
                 elif isinstance(fld, models.Model) and (fld.__class__, fld.pk) not in mark:
                     return_list.extend(_get_all_related_object_recursively(fld, mark))
             return return_list
