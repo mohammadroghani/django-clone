@@ -165,6 +165,8 @@ class Cloner(object):
         for new_object in new_objects:
             for field in new_object._meta.get_fields():
                 if field.is_relation and (field.many_to_one or field.one_to_one):
+                    if field.one_to_one and field.auto_created:
+                        continue
                     field_value = getattr(new_object, field.name, None)
                     mapped_value = old_to_new_objects_map.get(field_value, field_value)
                     setattr(new_object, field.name, mapped_value)
