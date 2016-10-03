@@ -91,8 +91,9 @@ class Cloner(object):
                     continue
 
                 if field.many_to_one or field.one_to_one:
-                    fld = getattr(obj, field_name)
-                    return_list.append(fld)
+                    fld = getattr(obj, field_name, None)
+                    if fld is not None:
+                        return_list.append(fld)
                 else:
                     for fld in getattr(obj, field_name).all():
                         return_list.append(fld)
