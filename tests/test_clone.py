@@ -190,8 +190,10 @@ class VersionControlTests(TestCase):
         choice = BigChoice(question=question, choice_text='c', votes=0)
         choice.save()
         Cloner().clone(question)
+        self.assertEqual(Question.objects.count(), 2)
         self.assertEqual(Choice.objects.count(), 2)
         Cloner().clone(choice)
+        self.assertEqual(Question.objects.count(), 3)
         self.assertEqual(Choice.objects.count(), 3)
 
     def test_clone_subclass_explicit_relation(self):
@@ -200,8 +202,10 @@ class VersionControlTests(TestCase):
         choice = BigChoice2(question=question, choice_text='c', votes=0)
         choice.save()
         Cloner().clone(question)
+        self.assertEqual(Question.objects.count(), 2)
         self.assertEqual(Choice.objects.count(), 2)
         Cloner().clone(choice)
+        self.assertEqual(Question.objects.count(), 3)
         self.assertEqual(Choice.objects.count(), 3)
 
     def test_clone_unique(self):
