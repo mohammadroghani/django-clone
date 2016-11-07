@@ -26,7 +26,7 @@ from django.test import TestCase
 from django.utils import timezone
 from django_clone.clone import Cloner
 
-from tests.models import Question, Choice, Person, Student, Group, Membership, A, B, C
+from tests.models import *
 
 
 def get_information_list(object_list):
@@ -38,6 +38,7 @@ def get_information_list(object_list):
 
 
 class VersionControlTests(TestCase):
+
     def test_get_all_neighbor_objects(self):
         question = Question(question_text='question1', pub_date=timezone.now())
         question.save()
@@ -106,7 +107,7 @@ class VersionControlTests(TestCase):
     def test_clone_with_one_object(self):
         question = Question(question_text='a', pub_date=timezone.now())
         question.save()
-        q = Cloner().clone(question)[0]
+        q = Cloner().clone(question)
         self.assertNotEqual(q.pk, question.pk)
         self.assertEqual(q.question_text, question.question_text)
         self.assertEqual(q.pub_date, question.pub_date)
@@ -117,11 +118,11 @@ class VersionControlTests(TestCase):
         choice = Choice(question=question, choice_text='c', votes=0)
         choice.save()
         cloner = Cloner()
-        c = cloner.clone(choice)[0]
+        c = cloner.clone(choice)
         self.assertNotEqual(choice.id, c.id)
         self.assertNotEqual(choice.question.id, c.question.id)
         self.assertEqual(choice.question.question_text, c.question.question_text)
-        q = cloner.clone(question)[0]
+        q = cloner.clone(question)
         self.assertNotEqual(q.id, question.id)
         self.assertNotEqual(question.choice_set.get(choice_text='c').pk, q.choice_set.get(choice_text='c').pk)
 
@@ -130,7 +131,7 @@ class VersionControlTests(TestCase):
         question.save()
         choice = Choice(question=question, choice_text='c', votes=0)
         choice.save()
-        c = Cloner(ignored_models=["tests.Question"]).clone(choice)[0]
+        c = Cloner(ignored_models=["tests.Question"]).clone(choice)
         self.assertNotEqual(choice.id, c.id)
         self.assertEqual(choice.question.id, c.question.id)
 
@@ -140,7 +141,7 @@ class VersionControlTests(TestCase):
         person = Person()
         person.save()
         person.questions.add(question)
-        p = Cloner().clone(person)[0]
+        p = Cloner().clone(person)
         self.assertNotEqual(person.id, p.id)
         self.assertNotEqual(person.questions.get(question_text='question1').id,
                             p.questions.get(question_text='question1').id)
@@ -152,7 +153,7 @@ class VersionControlTests(TestCase):
         person.save()
         person.questions.add(question)
         person.questions.add(question)
-        p = Cloner().clone(person)[0]
+        p = Cloner().clone(person)
         self.assertEqual(person.questions.all().count(), p.questions.all().count())
 
     def test_clone_with_through_field(self):
@@ -162,10 +163,10 @@ class VersionControlTests(TestCase):
         group.save()
         membership = Membership(student=student, group=group)
         membership.save()
-        g = Cloner().clone(group)[0]
+        g = Cloner().clone(group)
         self.assertNotEqual(g.id, group.id)
         self.assertNotEqual(group.members.get(name='Ali').id, g.members.get(name='Ali').id)
-        s = Cloner().clone(student)[0]
+        s = Cloner().clone(student)
         self.assertNotEqual(s.id, student.id)
         self.assertNotEqual(student.group_set.get(name='ACM').id, s.group_set.get(name='ACM').id)
 
@@ -178,7 +179,39 @@ class VersionControlTests(TestCase):
         membership1.save()
         membership2 = Membership(student=student, group=group)
         membership2.save()
-        g = Cloner().clone(group)[0]
+        g = Cloner().clone(group)
         self.assertEqual(g.members.all().count(), group.members.all().count())
-        s = Cloner().clone(student)[0]
+        s = Cloner().clone(student)
         self.assertEqual(s.group_set.all().count(),  student.group_set.all().count())
+
+    def test_clone_subclass(self):
+        question = Question(question_text='a', pub_date=timezone.now())
+        question.save()
+        choice = BigChoice(question=question, choice_text='c', votes=0)
+        choice.save()
+        Cloner().clone(question)
+        self.assertEqual(Choice.objects.count(), 2)
+        Cloner().clone(choice)
+        self.assertEqual(Choice.objects.count(), 3)
+
+    def test_clone_subclass_explicit_relation(self):
+        question = Question(question_text='a', pub_date=timezone.now())
+        question.save()
+        choice = BigChoice2(question=question, choice_text='c', votes=0)
+        choice.save()
+        Cloner().clone(question)
+        self.assertEqual(Choice.objects.count(), 2)
+        Cloner().clone(choice)
+        self.assertEqual(Choice.objects.count(), 3)
+
+    def test_clone_unique(self):
+        def unique_editor(obj):
+            if isinstance(obj, BigChoice):
+                obj.unique_value += "S"
+            return obj
+        question = Question(question_text='a', pub_date=timezone.now())
+        question.save()
+        choice = BigChoice(question=question, choice_text='c', votes=0, unique_value="S")
+        choice.save()
+        new_choice = Cloner().clone(choice, unique_editor)
+        self.assertNotEqual(new_choice.pk, choice.pk)

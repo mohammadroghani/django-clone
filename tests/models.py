@@ -56,3 +56,11 @@ class B(models.Model):
 
 class C(models.Model):
     a = models.ManyToManyField('A')
+
+class BigChoice(Choice):
+    unique_value = models.CharField(max_length=100, null=True, unique=True)
+
+class BigChoice2(Choice):
+    unique_value = models.CharField(max_length=100, null=True, unique=True)
+    explicit_rel = models.OneToOneField(Choice, parent_link=True)
+

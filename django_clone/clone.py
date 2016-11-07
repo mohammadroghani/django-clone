@@ -23,6 +23,8 @@
 # SOFTWARE.
 
 from copy import copy
+
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.apps import apps
 
@@ -108,7 +110,20 @@ class Cloner(object):
             recursively go to adjacent objects of an object and find related objects
             it works like dfs
             """
-            mark.update([(obj.__class__, obj.id)])
+            succeded_in_going_down = True
+            while succeded_in_going_down:
+                succeded_in_going_down = False
+                for field in obj._meta.get_fields():
+                    if field.is_relation and field.one_to_one and getattr(field, "parent_link", False):
+                        try:
+                            obj = getattr(obj, field.name)
+                            succeded_in_going_down = True
+                            break
+                        except:
+                            pass
+            if (obj.__class__, obj.pk) in mark:
+                return []
+            mark.update([(obj.__class__, obj.pk)])
             return_list = [obj]
             neighbors = self.get_all_neighbor_objects(obj)
             for fld in neighbors:
@@ -127,7 +142,7 @@ class Cloner(object):
         mark = set([])
         return _get_all_related_object_recursively(obj, mark)
 
-    def clone(self, obj):
+    def clone(self, obj, editor=None):
         """
         make copy of every objects that are related to one object
         """
@@ -136,42 +151,75 @@ class Cloner(object):
         new_to_old_objects_map = {b: a for a, b in old_to_new_objects_map.items()}
 
         old_objects = self.get_all_related_object(obj)
-        new_objects = []
+
+        save_queue = []
         for old_object in old_objects:
 
             ignored = False
             match = None
 
-            for model in self.ignored_models:
-                if type(old_object) == model:
-                    ignored = True
-                    match = old_object
-                    break
             if old_object in self.ignored_instances:
                 ignored = True
                 match = self.ignored_instances[old_object]
+            else:
+                for model in self.ignored_models:
+                    if type(old_object) == model:
+                        ignored = True
+                        match = old_object
+                        break
 
             if not ignored:
                 new_object = copy(old_object)
-                new_object.id = None
-                new_object.save()
-                match = new_object
+                new_object.pk = None
+                if editor is not None and callable(editor):
+                    new_object = editor(new_object)
+                save_queue.append((new_object, old_object, -1))
+            else:
+                old_to_new_objects_map[old_object] = match
 
-            old_to_new_objects_map.update({(old_object, match)})
-            if match:
-                new_objects.append(match)
-                new_to_old_objects_map.update({(match, old_object)})
 
-        for new_object in new_objects:
+        new_objects = []
+
+        while len(save_queue) > 0:
+
+            new_object, old_object, last_time_length = save_queue.pop(0)
+            if last_time_length == len(new_objects):
+                raise ValueError("Unable to clone due to unique and not-null fields. "
+                                 "Use an editor to modify unique values before saving")
+
+            # Updating the relations that their match has already been saved
+
+            try:
+                self._update_relations(new_object, old_object, old_to_new_objects_map, lazy=True)
+                # Don't use full clean here because
+                # it might have not been used on old object
+                new_object.validate_unique()
+            except ValidationError as e:
+                save_queue.append((new_object, old_object, len(new_objects)))
+                continue
+
+            new_object_dict = {}
             for field in new_object._meta.get_fields():
-                if field.is_relation and (field.many_to_one or field.one_to_one):
-                    if field.one_to_one and field.auto_created:
+                if field.auto_created:
+                    continue
+                if field.is_relation:
+                    parent_link = field.one_to_one and getattr(field.remote_field, "parent_link", False)
+                    if parent_link or field.many_to_many:
                         continue
-                    field_value = getattr(new_object, field.name, None)
-                    mapped_value = old_to_new_objects_map.get(field_value, field_value)
-                    setattr(new_object, field.name, mapped_value)
+                new_object_dict[field.name] = getattr(new_object, field.name, None)
+
+            new_object = new_object.__class__.objects.create(**new_object_dict)
+            new_objects.append(new_object)
+            old_to_new_objects_map[old_object] = new_object
+            new_to_old_objects_map[new_object] = old_object
+
+        # All objects have been saved now. So we have to update
+        # all relations that weren't updated previously.
+        for new_object in new_objects:
+            self._update_relations(new_object, new_to_old_objects_map[new_object], old_to_new_objects_map)
             new_object.save()
 
+        # Many-to-many relations
         for new_object in new_objects:
             for field in new_object._meta.get_fields():
                 if field.is_relation and field.many_to_many and field.auto_created is False:
@@ -181,4 +229,21 @@ class Cloner(object):
                         if mapped_fld not in current_field.all():
                             current_field.add(mapped_fld)
             new_object.save()
-        return old_to_new_objects_map[obj], old_to_new_objects_map 
+        return old_to_new_objects_map[obj]
+
+    def _update_relations(self, new_object, old_object, old_to_new_objects_map, lazy=False):
+        for field in new_object._meta.get_fields():
+            if field.is_relation and not field.auto_created and (field.many_to_one or field.one_to_one):
+                parent_link = field.one_to_one and getattr(field.remote_field, "parent_link", False)
+                if parent_link:
+                    continue
+                field_value = getattr(old_object, field.name, None)
+
+                mapped_value = old_to_new_objects_map.get(field_value, field_value)
+                if lazy:
+                    try:
+                        setattr(new_object, field.name, None)
+                    except ValueError:
+                        setattr(new_object, field.name, mapped_value)
+                else:
+                    setattr(new_object, field.name, mapped_value)
