@@ -27,7 +27,7 @@ from setuptools import setup
 setup(name='django-clone',
 		version='0.2.1',
 		description='Deep Copy for Django models',
-		url='http://github.com/storborg/funniest',
+		url='https://github.com/mohammadroghani/django-clone',
 		author='Mohammad Roghani, Amir Keivan Mohtashami',
 		author_email='mohammad.roghani43@gmail.com, akmohtashami97@gmail.com',
 		license='MIT',
