@@ -204,7 +204,7 @@ class Cloner(object):
                     continue
                 if field.is_relation:
                     parent_link = field.one_to_one and getattr(field.remote_field, "parent_link", False)
-                    if parent_link or field.many_to_many:
+                    if parent_link or field.many_to_many or field.one_to_many:
                         continue
                 new_object_dict[field.name] = getattr(new_object, field.name, None)
 
